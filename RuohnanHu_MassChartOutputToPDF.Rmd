@@ -1,0 +1,98 @@
+---
+title: "Mass Chart Output to PDF"
+author: "Ruohnan Hu"
+date: "1/24/2020"
+output: html_document
+---
+
+## This is an example of how to Mass Chart Output to PDF
+
+## the following packages are required
+```{r warning=FALSE}
+library(reshape2); library(scales); library(dplyr); library(stringr); library(RCurl); library(zipcode);
+library(devtools); library(ggplot2)
+```
+
+
+## set path and load data
+```{r}
+setwd('./PATH')
+load("./df1_june14.Rda")
+dim(df)
+
+write.csv(df, 'SE3.csv', row.names=F)
+df <- read.csv('SE3.csv', stringsAsFactors=F)
+
+## take a look at what types of variables df has
+for(var in names(df)) {print(class(df[[var]]))}
+```
+
+
+## PREPPING FOR PLOTTING STARTS HERE
+```{r}
+## this part prepares the mapping our zips to US map for density plot, on the US base map
+data(zipcode)
+df$long <- zipcode$longitude[match(df$q7, zipcode$zip)]
+df$lat <- zipcode$latitude[match(df$q7, zipcode$zip)]
+df$region = substr(df$q7, 1, 1)
+us <- map_data('state')
+
+## update '0' in multiple reponse arrays variables to 'not select' for visual
+vars <- names(df)[grep('q[0-9]+[a-z]{1}', names(df))]
+vars <- vars[nchar(vars) < 6]
+vects <- c()
+for(var in vars) {
+	if (length(levels(as.factor(df[[var]]))) == 2) {
+		if ('0' %in% levels(as.factor(df[[var]]))) {
+		print(var)
+		vects <- c(vects, var)
+		}	
+	}
+}
+vects <-  setdiff(vects, vects[grep('125', vects)])
+for (v in vects) {
+	if ('0' %in% levels(as.vector(df[[v]]))) {
+		df[[v]][df[[v]]=='0'] <- 'not selected'
+	}
+}
+```
+
+
+## START OF PLOTTING AND OUTPUT TO ONE SINGLE PDF FILE 
+```{r}
+pdf(onefile=TRUE, file="SE3_plots.pdf")
+# plotting zipcodes
+ggplot(df, aes(long, lat)) +
+		geom_polygon(data=us, aes(x=long, y=lat, group=group), color='gray',fill=NA,alpha=.35)+
+		geom_point(aes(color=region))+
+		xlim(-125,-65)+ylim(20,50)+theme(legend.position='none')+
+		labs(x='longitude', y='latitude', title='zip code density map')+
+		theme(plot.title=element_text(hjust=0.5))
+
+for (name in setdiff(names(df),'q7')) {
+	    labname <- str_wrap(name, width=60)
+	    xbins <- length(levels(as.factor(df[[name]])))
+	    counts <- as.vector(matrix(table(df[[name]])))
+	    xlabs <- levels(as.factor(df[[name]]))
+	    if (xbins < 10) {
+	        plt <- barplot(table(factor(as.character(df[[name]]), labels=str_wrap(xlabs, width=20))), main=labname, cex.main=0.8,ylim=c(0,max(counts)*1.3), col='light blue',cex.names=0.5)
+
+	      if (max(counts)*1.3 > 1000) {
+	        text(x=plt, y=table(df[[name]])+50, labels=counts, cex=0.6)
+	      } else if (max(counts)*1.3 <= 1000 & max(counts)*1.3 > 500) {
+	        text(x=plt, y=table(df[[name]])+20, labels=counts, cex=0.6)
+	      } else if (max(counts)*1.3 <= 500 & max(counts)*1.3 > 300) {
+	        text(x=plt, y=table(df[[name]])+10, labels=counts, cex=0.6)
+	      } else if (max(counts)*1.3 <= 300 & max(counts)*1.3 > 130) {
+	        text(x=plt, y=table(df[[name]])+5, labels=counts, cex=0.6)
+	      } else if (max(counts)*1.3 <= 130 & max(counts)*1.3 > 20) {
+	        text(x=plt, y=table(df[[name]])+2, labels=counts, cex=0.6)
+	      } else if (max(counts)*1.3 <= 20) {
+	        text(x=plt, y=table(df[[name]])+0.3, labels=counts, cex=0.6)
+	      }       
+		} else {
+	      barplot(table(df[[name]]), main=labname, cex.main=0.4,col='light blue',cex.names=0.35)
+		}
+}
+dev.off()
+```
